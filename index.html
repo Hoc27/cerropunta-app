@@ -24,11 +24,8 @@
         
         #flipbook-container {
             width: 100%;
-    
-
             margin: 0 auto;
             position: relative;
-         
         }
         
         #flipbook {
@@ -73,6 +70,85 @@
             width: 0%;
             transition: width 0.3s;
         }
+        
+        /* Estilos para los botones de navegación flotantes */
+        .nav-buttons {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 1000;
+        }
+        
+        .nav-button {
+            width: 50px;
+            height: 50px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .nav-button:hover {
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+        
+        /* Áreas ampliadas para pasar página */
+        .page-turn-area {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 30%; /* Área ampliada del 30% del ancho */
+            z-index: 100;
+            cursor: pointer;
+        }
+        
+        #prev-area {
+            left: 0;
+        }
+        
+        #next-area {
+            right: 0;
+        }
+        
+        /* Solo muestra el indicador en hover */
+        .page-turn-area:hover::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Indicadores de dirección */
+        #prev-area:hover::after {
+            content: '←';
+            position: absolute;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            font-size: 30px;
+            color: rgba(0, 0, 0, 0.5);
+        }
+        
+        #next-area:hover::after {
+            content: '→';
+            position: absolute;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            font-size: 30px;
+            color: rgba(0, 0, 0, 0.5);
+        }
     </style>
 </head>
 <body>
@@ -84,7 +160,18 @@
             </div>
         </div>
     </div>
-    <div id="flipbook-container"></div>
+    
+    <div id="flipbook-container">
+        <!-- Las áreas ampliadas para pasar página se añadirán aquí -->
+        <div id="prev-area" class="page-turn-area"></div>
+        <div id="next-area" class="page-turn-area"></div>
+    </div>
+    
+    <!-- Botones de navegación flotantes -->
+    <div class="nav-buttons">
+        <button id="prev-button" class="nav-button">←</button>
+        <button id="next-button" class="nav-button">→</button>
+    </div>
     
     <script>
         // Set the worker path for PDF.js
@@ -288,6 +375,10 @@
                             }
                         });
                         console.log('turn.js initialized successfully');
+                        
+                        // Configurar los eventos para los botones de navegación
+                        setupNavigation(flipbook);
+                        
                     } catch (error) {
                         console.error('Error initializing turn.js:', error);
                         document.getElementById('loader').style.display = 'flex';
@@ -323,6 +414,36 @@
                 console.error('Error loading PDF:', error);
                 document.getElementById('loader').innerHTML = 'Error loading PDF: ' + error.message;
             }
+        }
+        
+        // Configurar navegación con botones y áreas ampliadas
+        function setupNavigation(flipbook) {
+            // Eventos para botones flotantes
+            document.getElementById('prev-button').addEventListener('click', function() {
+                $(flipbook).turn('previous');
+            });
+            
+            document.getElementById('next-button').addEventListener('click', function() {
+                $(flipbook).turn('next');
+            });
+            
+            // Eventos para áreas ampliadas de clic
+            document.getElementById('prev-area').addEventListener('click', function() {
+                $(flipbook).turn('previous');
+            });
+            
+            document.getElementById('next-area').addEventListener('click', function() {
+                $(flipbook).turn('next');
+            });
+            
+            // Permitir también navegación con teclado
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowLeft') {
+                    $(flipbook).turn('previous');
+                } else if (e.key === 'ArrowRight') {
+                    $(flipbook).turn('next');
+                }
+            });
         }
     </script>
 </body>
