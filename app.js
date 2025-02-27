@@ -8,7 +8,7 @@ const app = express();
 
 // Cargar variables de entorno
 dotenv.config();
-
+const pdfGenerator = require('./pdfWorker');
 // Configurar CORS
 const whitelist = ['https://superdd-app.myshopify.com', 'https://dominio2.com'];
 const corsOptions = {
