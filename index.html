@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Flipbook</title>
+    <!-- Load jQuery first -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+    <!-- Then load turn.js directly from the source (sometimes CDN versions have issues) -->
+    <script src="https://raw.githack.com/blasten/turn.js/master/turn.min.js"></script>
+    <!-- Load PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        
+        #flipbook-container {
+            width: 100%;
+    
+
+            margin: 0 auto;
+            position: relative;
+         
+        }
+        
+        #flipbook {
+            margin: auto;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        #flipbook .page {
+            background-color: white;
+            overflow: hidden;
+        }
+        
+        canvas {
+            display: block; /* Remove extra space below canvas */
+        }
+        
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        #progress {
+            margin-top: 10px;
+            width: 300px;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #progress-bar {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div id="loader">
+        <div style="text-align: center;">
+            <div>Cargando PDF, por favor espere...</div>
+            <div id="progress">
+                <div id="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+    <div id="flipbook-container"></div>
+    
+    <script>
+        // Set the worker path for PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        
+        // Ensure jQuery and turn.js are properly loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if jQuery is properly loaded
+            if (typeof jQuery === 'undefined') {
+                console.error('jQuery is not loaded!');
+                document.getElementById('loader').innerHTML = 'Error: jQuery failed to load. Please check console.';
+                return;
+            }
+            
+            // Check if turn.js is properly loaded
+            if (typeof jQuery().turn === 'undefined') {
+                console.error('turn.js is not loaded!');
+                document.getElementById('loader').innerHTML = 'Error: turn.js failed to load. Please check console.';
+                
+                // Try to load turn.js again with a different method
+                var script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/turn.js/3/turn.min.js';
+                script.onload = function() {
+                    if (typeof jQuery().turn !== 'undefined') {
+                        console.log('Successfully loaded turn.js from alternate source');
+                        loadPdfFlipbook('productos_shopify.pdf');
+                    } else {
+                        document.getElementById('loader').innerHTML = 'Error: Could not load turn.js. Please make sure you have the correct library.';
+                    }
+                };
+                document.head.appendChild(script);
+                return;
+            }
+            
+            // If both are loaded, proceed with loading the PDF
+            loadPdfFlipbook('productos_shopify.pdf');
+        });
+        
+        // Check if we're on a mobile device
+        function isMobile() {
+            return window.innerWidth < 768;
+        }
+        
+        // Load the PDF document
+        async function loadPdfFlipbook(pdfUrl) {
+            try {
+                // Load the PDF
+                const loadingTask = pdfjsLib.getDocument(pdfUrl);
+                
+                // Add loading progress
+                loadingTask.onProgress = function(progress) {
+                    if (progress.total > 0) {
+                        const percent = (progress.loaded / progress.total) * 100;
+                        document.getElementById('progress-bar').style.width = percent + '%';
+                    }
+                };
+                
+                const pdf = await loadingTask.promise;
+                
+                // Get the container for the flipbook
+                const container = document.getElementById('flipbook-container');
+                const flipbook = document.createElement('div');
+                flipbook.id = 'flipbook';
+                container.appendChild(flipbook);
+                
+                // Get dimensions of first page to set up the flipbook
+                const firstPage = await pdf.getPage(1);
+                const viewport = firstPage.getViewport({ scale: 1.0 });
+                const pageRatio = viewport.width / viewport.height;
+                
+                // Calculate appropriate scale based on container size
+                const containerWidth = window.visualViewport.width;
+                const containerHeight = window.visualViewport.height;
+                console.log(containerHeight);
+                console.log(containerWidth);
+                // Determine if we're showing single or double pages
+                const isDouble = !isMobile();
+                const pagesVisible = isDouble ? 2 : 1;
+                
+                // Calculate scale factor to fit within container
+                let scale;
+                if (isDouble) {
+                    // For desktop: Two pages side by side
+                    const containerRatio = containerWidth / containerHeight;
+                    const bookRatio = (pageRatio * 2) / 1; // Two pages wide, one page tall
+                    
+                    if (bookRatio > containerRatio) {
+                        console.log('a');
+                        // Book is wider than container (relative to height)
+                        scale = (containerWidth * 0.70) / (viewport.width * 2); // 90% of container width
+                    } else {
+                        console.log('b');
+                        console.log(viewport.height);
+                        // Book is taller than container (relative to width)
+                        scale = (containerHeight * 0.70) / viewport.height; // 90% of container height
+                    }
+                    console.log(scale);
+                } else {
+                    // For mobile: One page at a time
+                    const containerRatio = containerWidth / containerHeight;
+                    
+                    if (pageRatio > containerRatio) {
+                        // Page is wider than container (relative to height)
+                        scale = (containerWidth * 0.90) / viewport.width; // 90% of container width
+                    } else {
+                        // Page is taller than container (relative to width)
+                        scale = (containerHeight * 0.90) / viewport.height; // 90% of container height
+                    }
+                }
+                
+                // Apply quality multiplier (higher = better quality)
+                const qualityMultiplier = 1.5;
+                scale = scale * qualityMultiplier;
+                
+                // Limit scale to prevent excessive memory usage
+                const maxScale = 2.5;
+                scale = Math.min(scale, maxScale);
+                
+                console.log("Using scale factor:", scale, "Display mode:", isDouble ? "double" : "single");
+                
+                const scaledViewport = firstPage.getViewport({ scale: scale });
+                const totalPages = pdf.numPages;
+                
+                // Initialize progress tracking
+                const progressBar = document.getElementById('progress-bar');
+                
+                // Load each page
+                for (let i = 1; i <= totalPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const pageViewport = page.getViewport({ scale: scale });
+                    
+                    // Create a div for this page
+                    const pageDiv = document.createElement('div');
+                    pageDiv.className = 'page';
+                    flipbook.appendChild(pageDiv);
+                    
+                    // Create a canvas for rendering
+                    const canvas = document.createElement('canvas');
+                    const pixelRatio = window.devicePixelRatio || 1;
+                    
+                    // Set canvas size with proper pixel ratio for crisp rendering
+                    canvas.height = pageViewport.height * pixelRatio;
+                    canvas.width = pageViewport.width * pixelRatio;
+                    
+                    // Apply CSS to maintain correct display size
+                    canvas.style.height = pageViewport.height + 'px';
+                    canvas.style.width = pageViewport.width + 'px';
+                    
+                    pageDiv.appendChild(canvas);
+                    const context = canvas.getContext('2d');
+                    
+                    // Scale context according to pixel ratio
+                    context.scale(pixelRatio, pixelRatio);
+                    
+                    // Render the PDF page with high quality
+                    await page.render({
+                        canvasContext: context,
+                        viewport: pageViewport,
+                        intent: 'display'
+                    }).promise;
+                    
+                    // Update progress
+                    const progress = (i / totalPages) * 100;
+                    progressBar.style.width = progress + '%';
+                    document.getElementById('loader').innerHTML = `
+                        <div style="text-align: center;">
+                            <div>Cargando página ${i} de ${totalPages}...</div>
+                            <div id="progress">
+                                <div id="progress-bar" style="width: ${progress}%"></div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Allow UI to update before continuing to next page
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                
+                // Hide loader
+                document.getElementById('loader').style.display = 'none';
+                
+                // Calculate dimensions for the flipbook
+                const pageWidth = scaledViewport.width;
+                const pageHeight = scaledViewport.height;
+                
+                // Initialize turn.js with delay to ensure DOM is ready
+                setTimeout(function() {
+                    try {
+                        // Configure turn.js based on device type
+                        $(flipbook).turn({
+                            width: isDouble ? pageWidth * 2 : pageWidth,
+                            height: pageHeight,
+                            autoCenter: true,
+                            gradients: true,
+                            elevation: 50,
+                            display: isDouble ? 'double' : 'single',
+                            acceleration: true,
+                            when: {
+                                turning: function(event, page, view) {
+                                    console.log('Turning to page:', page);
+                                }
+                            }
+                        });
+                        console.log('turn.js initialized successfully');
+                    } catch (error) {
+                        console.error('Error initializing turn.js:', error);
+                        document.getElementById('loader').style.display = 'flex';
+                        document.getElementById('loader').innerHTML = 'Error initializing flipbook: ' + error.message;
+                    }
+                }, 500);
+                
+                // Handle window resize and orientation changes
+                function handleResize() {
+                    try {
+                        const newIsDouble = !isMobile();
+                        
+                        // If display mode needs to change
+                        if (newIsDouble !== isDouble) {
+                            location.reload(); // Simplest approach is to reload the page
+                            return;
+                        }
+                        
+                        // Otherwise just resize
+                        $(flipbook).turn('size', 
+                            newIsDouble ? pageWidth * 2 : pageWidth, 
+                            pageHeight
+                        );
+                    } catch (error) {
+                        console.error('Error resizing flipbook:', error);
+                    }
+                }
+                
+                window.addEventListener('resize', handleResize);
+                window.addEventListener('orientationchange', handleResize);
+                
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                document.getElementById('loader').innerHTML = 'Error loading PDF: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
