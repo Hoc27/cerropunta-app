@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cron = require('node-cron');
 const dotenv = require('dotenv')
+const app = express();
 
 // Cargar variables de entorno
 dotenv.config();
