@@ -385,7 +385,18 @@ async function updateProductsPDF() {
   }
 }
 
-const whitelist = ['https://superdd-app.myshopify.com', 'https://dominio2.com'];
+
+// Función para iniciar la aplicación
+async function startApp() {
+  try {
+  console.log('Iniciando aplicación de generación de catálogo de Shopify...');
+  
+  // Crear directorio public si no existe
+  const publicDir = path.join(__dirname, 'public');
+  if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+  }
+  const whitelist = ['https://superdd-app.myshopify.com', 'https://dominio2.com'];
 const corsOptions = {
   origin: function (origin, callback) {
     if (whitelist.indexOf(origin) !== -1 || !origin) {
@@ -396,16 +407,8 @@ const corsOptions = {
   }
 };
 app.use(cors(corsOptions));
-// Función para iniciar la aplicación
-function startApp() {
-  console.log('Iniciando aplicación de generación de catálogo de Shopify...');
-  
-  // Crear directorio public si no existe
-  const publicDir = path.join(__dirname, 'public');
-  if (!fs.existsSync(publicDir)) {
-    fs.mkdirSync(publicDir, { recursive: true });
-  }
-  app.use(express.static('public'));
+
+app.use(express.static('public'));
   app.get('/book/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
@@ -480,7 +483,9 @@ app.get('/collection-products/:collectionId', async (req, res) => {
     res.status(500).json({ error: 'Error al procesar la solicitud' });
   }
 });
-
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
   // Configurar ruta principal
   app.get('/', (req, res) => {
     const pdfPath = path.join(__dirname, 'public', 'productos_shopify.pdf');
@@ -495,21 +500,27 @@ app.get('/collection-products/:collectionId', async (req, res) => {
   });
  
   // Iniciar servidor web
-  const PORT = process.env.PORT || 3090;
+  const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`Servidor escuchando en http://localhost:${PORT}`);
+
+        setTimeout(() => {
+        updateProductsPDF().catch(err => console.error('Error en actualización inicial:', err));
+        
+        // Programar ejecución cada 6 horas
+        cron.schedule('0 */6 * * *', () => {
+          console.log('Ejecutando verificación programada...');
+          updateProductsPDF().catch(err => console.error('Error en actualización programada:', err));
+        });
+      }, 3000); // Espera 3 segundos antes de iniciar tareas pesadas
   });
 
   // Ejecutar inmediatamente al iniciar
-  updateProductsPDF();
-
-  // Programar ejecución cada 6 horas
-  cron.schedule('0 */6 * * *', () => {
-    console.log('Ejecutando verificación programada...');
-    updateProductsPDF();
-  });
-
-  console.log('Aplicación iniciada. Se verificarán cambios en productos cada 6 horas.');
+  
+} catch (error) {
+  console.error('Error fatal al iniciar:', error);
+  process.exit(1);
+}
 }
 
 // Iniciar la aplicación
