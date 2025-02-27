@@ -174,12 +174,12 @@
                     if (bookRatio > containerRatio) {
                         console.log('a');
                         // Book is wider than container (relative to height)
-                        scale = (containerWidth * 0.70) / (viewport.width * 2); // 90% of container width
+                        scale = (containerWidth * 0.65) / (viewport.width * 2); // 90% of container width
                     } else {
                         console.log('b');
                         console.log(viewport.height);
                         // Book is taller than container (relative to width)
-                        scale = (containerHeight * 0.70) / viewport.height; // 90% of container height
+                        scale = (containerHeight * 0.65) / viewport.height; // 90% of container height
                     }
                     console.log(scale);
                 } else {
@@ -188,10 +188,10 @@
                     
                     if (pageRatio > containerRatio) {
                         // Page is wider than container (relative to height)
-                        scale = (containerWidth * 0.90) / viewport.width; // 90% of container width
+                        scale = (containerWidth * 0.80) / viewport.width; // 90% of container width
                     } else {
                         // Page is taller than container (relative to width)
-                        scale = (containerHeight * 0.90) / viewport.height; // 90% of container height
+                        scale = (containerHeight * 0.80) / viewport.height; // 90% of container height
                     }
                 }
                 
@@ -200,7 +200,7 @@
                 scale = scale * qualityMultiplier;
                 
                 // Limit scale to prevent excessive memory usage
-                const maxScale = 2.5;
+                const maxScale = 2;
                 scale = Math.min(scale, maxScale);
                 
                 console.log("Using scale factor:", scale, "Display mode:", isDouble ? "double" : "single");
