@@ -5,9 +5,16 @@ const fs = require('fs');
 const cron = require('node-cron');
 const dotenv = require('dotenv')
 const app = express();
+const Shopify = require('shopify-api-node');
+dotenv.config();
+// Configuración de la API de Shopify
+const shopify = new Shopify({
+  shopName: process.env.SHOPIFY_SHOP_NAME,
+  accessToken: process.env.SHOPIFY_ACCESS_TOKEN
+});
 
 // Cargar variables de entorno
-dotenv.config();
+
 const pdfGenerator = require('./pdfWorker');
 // Configurar CORS
 const whitelist = ['https://superdd-app.myshopify.com', 'https://dominio2.com'];
