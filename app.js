@@ -150,7 +150,7 @@ app.post('/generate-pdf', async (req, res) => {
 app.get('/generation-status', (req, res) => {
   res.json(pdfGenerator.getGenerationStatus());
 });
-
+app.use(express.static('public'));
 // Función para iniciar la aplicación
 function startServer() {
   // Asegurar que existe el directorio public
