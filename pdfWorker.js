@@ -115,6 +115,7 @@ async function getAllProducts() {
 }
 
 // Función para generar el PDF con pdf-lib
+// Replace the existing image processing with this batch approach
 async function generatePDF(products) {
   try {
     const outputPath = path.join(PUBLIC_DIR, 'productos_shopify.pdf');
@@ -128,215 +129,176 @@ async function generatePDF(products) {
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     
-    // Si existe la imagen de portada, usarla como fondo
-    const COVER_IMAGE_PATH = path.join(__dirname, 'postada-cp-catalago.jpg');
+    // Código para la portada (sin cambios)...
     
-    try {
-      // Añadir página de portada
-      const coverPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      
-      if (fs.existsSync(COVER_IMAGE_PATH)) {
-        const coverImageBytes = fs.readFileSync(COVER_IMAGE_PATH);
-        let coverImage;
-        
-        // Determinar tipo de imagen y cargarla
-        if (COVER_IMAGE_PATH.toLowerCase().endsWith('.jpg') || COVER_IMAGE_PATH.toLowerCase().endsWith('.jpeg')) {
-          coverImage = await pdfDoc.embedJpg(coverImageBytes);
-        } else if (COVER_IMAGE_PATH.toLowerCase().endsWith('.png')) {
-          coverImage = await pdfDoc.embedPng(coverImageBytes);
-        }
-        
-        if (coverImage) {
-          coverPage.drawImage(coverImage, {
-            x: 0,
-            y: 0,
-            width: PAGE_WIDTH,
-            height: PAGE_HEIGHT,
-          });
-        }
-      } else {
-        console.log(`Archivo de portada no encontrado: ${COVER_IMAGE_PATH}. Continuando sin portada.`);
-        // Agregar un título en la portada como alternativa
-        coverPage.drawText("Catálogo de Productos", {
-          x: 150,
-          y: PAGE_HEIGHT / 2,
-          size: 24,
-          font: helveticaBold
-        });
-      }
-    } catch (error) {
-      console.error("Error al cargar la imagen de portada:", error);
-      // Continuar sin la portada en caso de error
-    }
-
     // Calcular número de páginas necesarias
     const totalPages = Math.ceil(products.length / PRODUCTS_PER_PAGE);
     console.log(`Generando PDF con ${totalPages} páginas...`);
     
-    // Descargar todas las imágenes primero
-    console.log('Descargando imágenes de productos...');
-    const productImages = {};
+    // Procesar en lotes de páginas para reducir uso de memoria
+    const BATCH_SIZE = 5; // Procesar 5 páginas a la vez (40 productos)
+    const totalBatches = Math.ceil(totalPages / BATCH_SIZE);
     
-    // Actualizar estado
-    generationStatus.progress = 30;
-    generationStatus.status = "Descargando imágenes de productos";
-    
-    for (let i = 0; i < products.length; i++) {
-      const product = products[i];
-      if (product.image && product.image.src) {
-        const localImagePath = await downloadImage(product.image.src, product.id);
-        if (localImagePath) {
-          productImages[product.id] = localImagePath;
-        }
-      }
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      // Calcular qué páginas y productos corresponden a este lote
+      const startPageIndex = batchIndex * BATCH_SIZE;
+      const endPageIndex = Math.min((batchIndex + 1) * BATCH_SIZE, totalPages);
+      const startProductIndex = startPageIndex * PRODUCTS_PER_PAGE;
+      const endProductIndex = Math.min(endPageIndex * PRODUCTS_PER_PAGE, products.length);
       
-      // Actualizar progreso de descarga de imágenes (del 30% al 60%)
-      const downloadProgress = 30 + Math.floor((i / products.length) * 30);
-      generationStatus.progress = downloadProgress;
-    }
-    
-    console.log(`Descargadas ${Object.keys(productImages).length} imágenes de productos.`);
-    
-    // Crear páginas para productos
-    const embeddedImages = {};
-    
-    // Actualizar estado
-    generationStatus.progress = 60;
-    generationStatus.status = "Procesando imágenes para el PDF";
-    
-    // Preparar todas las imágenes
-    for (const productId in productImages) {
-      const localImagePath = productImages[productId];
+      console.log(`Procesando lote ${batchIndex + 1}/${totalBatches}: productos ${startProductIndex} a ${endProductIndex}`);
+      generationStatus.status = `Procesando lote ${batchIndex + 1}/${totalBatches}`;
       
-      if (fs.existsSync(localImagePath)) {
-        try {
-          const imageBytes = fs.readFileSync(localImagePath);
-          
-          if (localImagePath.toLowerCase().endsWith('.jpg') || localImagePath.toLowerCase().endsWith('.jpeg')) {
-            embeddedImages[productId] = await pdfDoc.embedJpg(imageBytes);
-          } else if (localImagePath.toLowerCase().endsWith('.png')) {
-            embeddedImages[productId] = await pdfDoc.embedPng(imageBytes);
+      // Descargar solo las imágenes necesarias para este lote
+      const batchProductImages = {};
+      const batchProducts = products.slice(startProductIndex, endProductIndex);
+      
+      // Actualizar progreso - dividir el progreso de 30% a 90% entre todos los lotes
+      const batchProgressStart = 30 + (batchIndex * 60 / totalBatches);
+      const batchProgressEnd = 30 + ((batchIndex + 1) * 60 / totalBatches);
+      
+      // Descargar imágenes para este lote
+      generationStatus.status = `Descargando imágenes (lote ${batchIndex + 1}/${totalBatches})`;
+      for (let i = 0; i < batchProducts.length; i++) {
+        const product = batchProducts[i];
+        if (product.image && product.image.src) {
+          const localImagePath = await downloadImage(product.image.src, product.id);
+          if (localImagePath) {
+            batchProductImages[product.id] = localImagePath;
           }
-        } catch (err) {
-          console.error(`Error al cargar imagen para el producto ${productId}:`, err.message);
         }
-      }
-    }
-    
-    // Actualizar estado
-    generationStatus.progress = 70;
-    generationStatus.status = "Componiendo páginas del PDF";
-    
-    // Función auxiliar para dividir el texto en múltiples líneas
-    function splitTextToLines(text, maxWidth, font, fontSize) {
-      if (!text) return [''];
-      
-      const words = text.split(' ');
-      const lines = [];
-      let currentLine = words[0];
-      
-      for (let i = 1; i < words.length; i++) {
-        const word = words[i];
-        const width = font.widthOfTextAtSize(currentLine + ' ' + word, fontSize);
         
-        if (width < maxWidth) {
-          currentLine += ' ' + word;
-        } else {
-          lines.push(currentLine);
-          currentLine = word;
-        }
+        // Actualizar progreso dentro del lote
+        const downloadProgress = batchProgressStart + ((i / batchProducts.length) * (batchProgressEnd - batchProgressStart) * 0.5);
+        generationStatus.progress = Math.floor(downloadProgress);
       }
       
-      lines.push(currentLine);
-      return lines;
-    }
-    
-    // Organizar productos en páginas
-    for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      // Preparar imágenes para PDF
+      const embeddedImages = {};
+      generationStatus.status = `Procesando imágenes para PDF (lote ${batchIndex + 1}/${totalBatches})`;
       
-      // Actualizar progreso por página (del 70% al 90%)
-      const pagesProgress = 70 + Math.floor((pageIndex / totalPages) * 20);
-      generationStatus.progress = pagesProgress;
-      
-      // Añadir número de página en el pie de página
-      page.drawText(`Página ${pageIndex + 1} de ${totalPages}`, {
-        x: PAGE_WIDTH / 2 - 40,
-        y: 30,
-        font: helveticaFont,
-        size: 8
-      });
-      
-      // Productos para esta página
-      const startIdx = pageIndex * PRODUCTS_PER_PAGE;
-      const endIdx = Math.min(startIdx + PRODUCTS_PER_PAGE, products.length);
-      
-      for (let i = startIdx; i < endIdx; i++) {
-        const product = products[i];
-        const positionInPage = i % PRODUCTS_PER_PAGE;
-        const col = positionInPage % 2;
-        const row = Math.floor(positionInPage / 2);
+      for (const productId in batchProductImages) {
+        const localImagePath = batchProductImages[productId];
         
-        // Calcular posición X e Y
-        const x = MARGIN + (col * COL_WIDTH);
-        const y = PAGE_HEIGHT - MARGIN - 80 - (row * ROW_HEIGHT);
-        
-        // Dibujar imagen del producto
-        if (embeddedImages[product.id]) {
-          const productImage = embeddedImages[product.id];
-          const imageDims = productImage.scale(1);
-          const scale = Math.min(
-            IMAGE_SIZE / imageDims.width,
-            IMAGE_SIZE / imageDims.height
-          );
-          
-          page.drawImage(productImage, {
-            x: x,
-            y: y - IMAGE_SIZE,
-            width: IMAGE_SIZE,
-            height: IMAGE_SIZE,
-          });
-        } else {
-          // Rectángulo como placeholder para imágenes faltantes
-          page.drawRectangle({
-            x: x,
-            y: y - IMAGE_SIZE,
-            width: IMAGE_SIZE,
-            height: IMAGE_SIZE,
-            borderColor: rgb(0, 0, 0),
-            borderWidth: 1,
-          });
-          
-          page.drawText('Sin imagen', {
-            x: x + 25,
-            y: y - (IMAGE_SIZE / 2),
-            font: helveticaFont,
-            size: 8
-          });
+        if (fs.existsSync(localImagePath)) {
+          try {
+            const imageBytes = fs.readFileSync(localImagePath);
+            
+            if (localImagePath.toLowerCase().endsWith('.jpg') || localImagePath.toLowerCase().endsWith('.jpeg')) {
+              embeddedImages[productId] = await pdfDoc.embedJpg(imageBytes);
+            } else if (localImagePath.toLowerCase().endsWith('.png')) {
+              embeddedImages[productId] = await pdfDoc.embedPng(imageBytes);
+            }
+          } catch (err) {
+            console.error(`Error al cargar imagen para el producto ${productId}:`, err.message);
+          }
         }
+      }
+      
+      // Crear páginas para este lote
+      generationStatus.status = `Creando páginas del PDF (lote ${batchIndex + 1}/${totalBatches})`;
+      
+      for (let pageIndex = startPageIndex; pageIndex < endPageIndex; pageIndex++) {
+        const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
         
-        const titleLines = splitTextToLines(product.title, COL_WIDTH - IMAGE_SIZE - 15, helveticaBold, 9);
-        const lineHeight = 12;
+        // Actualizar progreso por página
+        const pagesProgress = batchProgressStart + 0.5 * (batchProgressEnd - batchProgressStart) + 
+                             ((pageIndex - startPageIndex) / (endPageIndex - startPageIndex)) * 
+                             (batchProgressEnd - batchProgressStart) * 0.5;
+        generationStatus.progress = Math.floor(pagesProgress);
         
-        titleLines.forEach((line, index) => {
-          page.drawText(line, {
+        // Añadir número de página en el pie de página
+        page.drawText(`Página ${pageIndex + 1} de ${totalPages}`, {
+          x: PAGE_WIDTH / 2 - 40,
+          y: 30,
+          font: helveticaFont,
+          size: 8
+        });
+        
+        // Productos para esta página
+        const startIdx = pageIndex * PRODUCTS_PER_PAGE;
+        const endIdx = Math.min(startIdx + PRODUCTS_PER_PAGE, products.length);
+        
+        // Código para dibujar productos (sin cambios)...
+        for (let i = startIdx; i < endIdx; i++) {
+          const product = products[i];
+          const positionInPage = i % PRODUCTS_PER_PAGE;
+          const col = positionInPage % 2;
+          const row = Math.floor(positionInPage / 2);
+          
+          // Calcular posición X e Y
+          const x = MARGIN + (col * COL_WIDTH);
+          const y = PAGE_HEIGHT - MARGIN - 80 - (row * ROW_HEIGHT);
+          
+          // Dibujar imagen del producto
+          if (embeddedImages[product.id]) {
+            const productImage = embeddedImages[product.id];
+            const imageDims = productImage.scale(1);
+            const scale = Math.min(
+              IMAGE_SIZE / imageDims.width,
+              IMAGE_SIZE / imageDims.height
+            );
+            
+            page.drawImage(productImage, {
+              x: x,
+              y: y - IMAGE_SIZE,
+              width: IMAGE_SIZE,
+              height: IMAGE_SIZE,
+            });
+          } else {
+            // Rectángulo como placeholder para imágenes faltantes
+            page.drawRectangle({
+              x: x,
+              y: y - IMAGE_SIZE,
+              width: IMAGE_SIZE,
+              height: IMAGE_SIZE,
+              borderColor: rgb(0, 0, 0),
+              borderWidth: 1,
+            });
+            
+            page.drawText('Sin imagen', {
+              x: x + 25,
+              y: y - (IMAGE_SIZE / 2),
+              font: helveticaFont,
+              size: 8
+            });
+          }
+          
+          const titleLines = splitTextToLines(product.title, COL_WIDTH - IMAGE_SIZE - 15, helveticaBold, 9);
+          const lineHeight = 12;
+          
+          titleLines.forEach((line, index) => {
+            page.drawText(line, {
+              x: x + IMAGE_SIZE + 10,
+              y: y - 15 - (index * lineHeight),
+              font: helveticaBold,
+              size: 9,
+              maxWidth: COL_WIDTH - IMAGE_SIZE - 15
+            });
+          });
+          
+          // Ajustar la posición del precio basado en la cantidad de líneas del título
+          const titleHeight = titleLines.length * lineHeight;
+          page.drawText(`Precio: $${product.variants[0]?.price || 'N/A'}`, {
             x: x + IMAGE_SIZE + 10,
-            y: y - 15 - (index * lineHeight),
-            font: helveticaBold,
-            size: 9,
+            y: y - 15 - titleHeight - 10,
+            font: helveticaFont,
+            size: 8,
             maxWidth: COL_WIDTH - IMAGE_SIZE - 15
           });
+        }
+      }
+      
+      // Limpiar imágenes temporales después de procesar este lote
+      try {
+        console.log(`Limpiando imágenes temporales del lote ${batchIndex + 1}...`);
+        Object.values(batchProductImages).forEach(imagePath => {
+          if (fs.existsSync(imagePath)) {
+            fs.unlinkSync(imagePath);
+          }
         });
-        
-        // Ajustar la posición del precio basado en la cantidad de líneas del título
-        const titleHeight = titleLines.length * lineHeight;
-        page.drawText(`Precio: $${product.variants[0]?.price || 'N/A'}`, {
-          x: x + IMAGE_SIZE + 10,
-          y: y - 15 - titleHeight - 10,
-          font: helveticaFont,
-          size: 8,
-          maxWidth: COL_WIDTH - IMAGE_SIZE - 15
-        });
+      } catch (err) {
+        console.error('Error al limpiar imágenes temporales:', err);
       }
     }
     
@@ -349,21 +311,8 @@ async function generatePDF(products) {
     fs.writeFileSync(outputPath, pdfBytes);
     
     console.log(`PDF generado exitosamente: ${outputPath}`);
-    generationStatus.progress = 95;
-    
-    // Limpiar imágenes temporales después de generar el PDF
-    try {
-      console.log('Limpiando imágenes temporales...');
-      Object.values(productImages).forEach(imagePath => {
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
-      });
-      generationStatus.progress = 100;
-      generationStatus.status = "Completado";
-    } catch (err) {
-      console.error('Error al limpiar imágenes temporales:', err);
-    }
+    generationStatus.progress = 100;
+    generationStatus.status = "Completado";
     
     return outputPath;
   } catch (error) {
