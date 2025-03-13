@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { createWriteStream } = require('fs');
+//const stream = require('stream');
 const { promisify } = require('util');
 const stream = require('stream');
 const pipeline = promisify(stream.pipeline);
@@ -450,14 +451,14 @@ async function mergePDFs(pdfPaths, outputPath) {
       if (fs.existsSync(pdfPath)) {
         // Cargar PDF individual
         const pdfBytes = fs.readFileSync(pdfPath);
-        const pdf = await PDFDocument.load(pdfBytes);
+        const sourcePdf = await PDFDocument.load(pdfBytes); // Changed variable name from pdf to sourcePdf
         
         // Copiar todas las páginas al documento final
-        const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+        const copiedPages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
         copiedPages.forEach(page => mergedPdf.addPage(page));
         
-        // Ayudar al garbage collector liberando las referencias
-        pdf = null;
+        // No intentar modificar la constante, solo liberar la referencia del contexto
+        // sourcePdf = null;  <-- Esta línea causaba el error
       }
     }
     
