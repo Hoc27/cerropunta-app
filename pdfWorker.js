@@ -141,15 +141,21 @@ async function generatePDF(products) {
     }
     
     // Función auxiliar para dividir el texto en múltiples líneas
-    function splitTextToLines(text, maxWidth, font, fontSize) {
-      if (!text) return [''];
+   // Función auxiliar para dividir el texto en múltiples líneas
+   function splitTextToLines(text, maxWidth, font, fontSize) {
+    if (!text) return [''];
+    
+    // Normalizar el texto para evitar problemas de codificación
+    const normalizedText = normalizeText(text);
+    
+    const words = normalizedText.split(' ');
+    const lines = [];
+    let currentLine = words[0] || '';
+    
+    for (let i = 1; i < words.length; i++) {
+      const word = words[i];
       
-      const words = text.split(' ');
-      const lines = [];
-      let currentLine = words[0];
-      
-      for (let i = 1; i < words.length; i++) {
-        const word = words[i];
+      try {
         const width = font.widthOfTextAtSize(currentLine + ' ' + word, fontSize);
         
         if (width < maxWidth) {
@@ -158,11 +164,17 @@ async function generatePDF(products) {
           lines.push(currentLine);
           currentLine = word;
         }
+      } catch (error) {
+        console.warn(`Error al medir texto "${currentLine} ${word}": ${error.message}`);
+        // Si hay error de codificación, simplemente añadir la palabra a la línea actual
+        // y posiblemente iniciar una nueva línea en la próxima iteración
+        currentLine += ' ' + word;
       }
-      
-      lines.push(currentLine);
-      return lines;
     }
+    
+    lines.push(currentLine);
+    return lines;
+  }
     // Código para la portada (sin cambios)...
     const COVER_IMAGE_PATH = path.join(__dirname, 'postada-cp-catalago.jpg');
     try {
