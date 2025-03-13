@@ -128,6 +128,7 @@ async function generatePDF(products) {
     // Fuentes
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
     // Función para normalizar texto y eliminar caracteres especiales no soportados
     function normalizeText(text) {
       if (!text) return '';
@@ -141,57 +142,58 @@ async function generatePDF(products) {
     }
     
     // Función auxiliar para dividir el texto en múltiples líneas
-   // Función auxiliar para dividir el texto en múltiples líneas
-   function splitTextToLines(text, maxWidth, font, fontSize) {
-    if (!text) return [''];
-    
-    // Normalizar el texto para evitar problemas de codificación
-    const normalizedText = normalizeText(text);
-    
-    const words = normalizedText.split(' ');
-    const lines = [];
-    let currentLine = words[0] || '';
-    
-    for (let i = 1; i < words.length; i++) {
-      const word = words[i];
+    function splitTextToLines(text, maxWidth, font, fontSize) {
+      if (!text) return [''];
       
-      try {
-        const width = font.widthOfTextAtSize(currentLine + ' ' + word, fontSize);
+      // Normalizar el texto para evitar problemas de codificación
+      const normalizedText = normalizeText(text);
+      
+      const words = normalizedText.split(' ');
+      const lines = [];
+      let currentLine = words[0] || '';
+      
+      for (let i = 1; i < words.length; i++) {
+        const word = words[i];
         
-        if (width < maxWidth) {
+        try {
+          const width = font.widthOfTextAtSize(currentLine + ' ' + word, fontSize);
+          
+          if (width < maxWidth) {
+            currentLine += ' ' + word;
+          } else {
+            lines.push(currentLine);
+            currentLine = word;
+          }
+        } catch (error) {
+          console.warn(`Error al medir texto "${currentLine} ${word}": ${error.message}`);
+          // Si hay error de codificación, simplemente añadir la palabra a la línea actual
+          // y posiblemente iniciar una nueva línea en la próxima iteración
           currentLine += ' ' + word;
-        } else {
-          lines.push(currentLine);
-          currentLine = word;
         }
-      } catch (error) {
-        console.warn(`Error al medir texto "${currentLine} ${word}": ${error.message}`);
-        // Si hay error de codificación, simplemente añadir la palabra a la línea actual
-        // y posiblemente iniciar una nueva línea en la próxima iteración
-        currentLine += ' ' + word;
       }
+      
+      lines.push(currentLine);
+      return lines;
     }
     
-    lines.push(currentLine);
-    return lines;
-  }
-    // Código para la portada (sin cambios)...
+    // Si existe la imagen de portada, usarla como fondo
     const COVER_IMAGE_PATH = path.join(__dirname, 'postada-cp-catalago.jpg');
+    
     try {
       // Añadir página de portada
       const coverPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-
+      
       if (fs.existsSync(COVER_IMAGE_PATH)) {
         const coverImageBytes = fs.readFileSync(COVER_IMAGE_PATH);
         let coverImage;
-
+        
         // Determinar tipo de imagen y cargarla
         if (COVER_IMAGE_PATH.toLowerCase().endsWith('.jpg') || COVER_IMAGE_PATH.toLowerCase().endsWith('.jpeg')) {
           coverImage = await pdfDoc.embedJpg(coverImageBytes);
         } else if (COVER_IMAGE_PATH.toLowerCase().endsWith('.png')) {
           coverImage = await pdfDoc.embedPng(coverImageBytes);
         }
-
+        
         if (coverImage) {
           coverPage.drawImage(coverImage, {
             x: 0,
@@ -200,6 +202,9 @@ async function generatePDF(products) {
             height: PAGE_HEIGHT,
           });
         }
+        
+        // Liberar memoria de la imagen de portada
+        coverImage = null;
       } else {
         console.log(`Archivo de portada no encontrado: ${COVER_IMAGE_PATH}. Continuando sin portada.`);
         // Agregar un título en la portada como alternativa
@@ -214,13 +219,25 @@ async function generatePDF(products) {
       console.error("Error al cargar la imagen de portada:", error);
       // Continuar sin la portada en caso de error
     }
+    
     // Calcular número de páginas necesarias
     const totalPages = Math.ceil(products.length / PRODUCTS_PER_PAGE);
     console.log(`Generando PDF con ${totalPages} páginas...`);
     
     // Procesar en lotes de páginas para reducir uso de memoria
-    const BATCH_SIZE = 5; // Procesar 5 páginas a la vez (40 productos)
+    // Reducir el tamaño del lote para evitar el consumo excesivo de memoria
+    const BATCH_SIZE = 2; // Reducido de 5 a 2 páginas por lote
     const totalBatches = Math.ceil(totalPages / BATCH_SIZE);
+    
+    // Función para acotar el tamaño máximo de la imagen
+    async function resizeImageBuffer(imageBuffer, maxDimension = 600) {
+      // Este es un placeholder - en un entorno real, usaríamos sharp o jimp
+      // para redimensionar la imagen y reducir su tamaño
+      
+      // Por ahora, simplemente devolvemos el buffer original
+      // En producción, implementar redimensionamiento aquí
+      return imageBuffer;
+    }
     
     for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
       // Calcular qué páginas y productos corresponden a este lote
@@ -265,13 +282,22 @@ async function generatePDF(products) {
         
         if (fs.existsSync(localImagePath)) {
           try {
-            const imageBytes = fs.readFileSync(localImagePath);
+            // Leer imagen y límite de tamaño
+            let imageBytes = fs.readFileSync(localImagePath);
+            
+            // Reducir el tamaño de la imagen si es necesario
+            if (imageBytes.length > 1024 * 1024) { // Si es mayor a 1MB
+              imageBytes = await resizeImageBuffer(imageBytes);
+            }
             
             if (localImagePath.toLowerCase().endsWith('.jpg') || localImagePath.toLowerCase().endsWith('.jpeg')) {
               embeddedImages[productId] = await pdfDoc.embedJpg(imageBytes);
             } else if (localImagePath.toLowerCase().endsWith('.png')) {
               embeddedImages[productId] = await pdfDoc.embedPng(imageBytes);
             }
+            
+            // Liberar memoria del buffer de la imagen
+            imageBytes = null;
           } catch (err) {
             console.error(`Error al cargar imagen para el producto ${productId}:`, err.message);
           }
@@ -302,7 +328,6 @@ async function generatePDF(products) {
         const startIdx = pageIndex * PRODUCTS_PER_PAGE;
         const endIdx = Math.min(startIdx + PRODUCTS_PER_PAGE, products.length);
         
-        // Código para dibujar productos (sin cambios)...
         for (let i = startIdx; i < endIdx; i++) {
           const product = products[i];
           const positionInPage = i % PRODUCTS_PER_PAGE;
@@ -347,28 +372,41 @@ async function generatePDF(products) {
             });
           }
           
-          const titleLines = splitTextToLines(product.title, COL_WIDTH - IMAGE_SIZE - 15, helveticaBold, 9);
+          // Normalizar título antes de dividirlo en líneas
+          const productTitle = normalizeText(product.title);
+          const titleLines = splitTextToLines(productTitle, COL_WIDTH - IMAGE_SIZE - 15, helveticaBold, 9);
           const lineHeight = 12;
           
           titleLines.forEach((line, index) => {
-            page.drawText(line, {
-              x: x + IMAGE_SIZE + 10,
-              y: y - 15 - (index * lineHeight),
-              font: helveticaBold,
-              size: 9,
-              maxWidth: COL_WIDTH - IMAGE_SIZE - 15
-            });
+            try {
+              page.drawText(line, {
+                x: x + IMAGE_SIZE + 10,
+                y: y - 15 - (index * lineHeight),
+                font: helveticaBold,
+                size: 9,
+                maxWidth: COL_WIDTH - IMAGE_SIZE - 15
+              });
+            } catch (error) {
+              console.warn(`Error al dibujar texto "${line}": ${error.message}`);
+            }
           });
           
           // Ajustar la posición del precio basado en la cantidad de líneas del título
           const titleHeight = titleLines.length * lineHeight;
-          page.drawText(`Precio: $${product.variants[0]?.price || 'N/A'}`, {
-            x: x + IMAGE_SIZE + 10,
-            y: y - 15 - titleHeight - 10,
-            font: helveticaFont,
-            size: 8,
-            maxWidth: COL_WIDTH - IMAGE_SIZE - 15
-          });
+          
+          try {
+            // Normalizar el precio también por si acaso
+            const priceText = `Precio: $${normalizeText(product.variants[0]?.price || 'N/A')}`;
+            page.drawText(priceText, {
+              x: x + IMAGE_SIZE + 10,
+              y: y - 15 - titleHeight - 10,
+              font: helveticaFont,
+              size: 8,
+              maxWidth: COL_WIDTH - IMAGE_SIZE - 15
+            });
+          } catch (error) {
+            console.warn(`Error al dibujar precio: ${error.message}`);
+          }
         }
       }
       
@@ -382,6 +420,21 @@ async function generatePDF(products) {
         });
       } catch (err) {
         console.error('Error al limpiar imágenes temporales:', err);
+      }
+      
+      // Limpiar memoria de las imágenes incrustadas
+      for (const productId in embeddedImages) {
+        embeddedImages[productId] = null;
+      }
+      
+      // Forzar la liberación de memoria
+      if (global.gc) {
+        try {
+          global.gc();
+          console.log('Garbage collection ejecutado');
+        } catch (err) {
+          console.error('Error al ejecutar garbage collection:', err);
+        }
       }
     }
     
