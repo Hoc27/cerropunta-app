@@ -129,8 +129,68 @@ async function generatePDF(products) {
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     
+    // Función auxiliar para dividir el texto en múltiples líneas
+    function splitTextToLines(text, maxWidth, font, fontSize) {
+      if (!text) return [''];
+      
+      const words = text.split(' ');
+      const lines = [];
+      let currentLine = words[0];
+      
+      for (let i = 1; i < words.length; i++) {
+        const word = words[i];
+        const width = font.widthOfTextAtSize(currentLine + ' ' + word, fontSize);
+        
+        if (width < maxWidth) {
+          currentLine += ' ' + word;
+        } else {
+          lines.push(currentLine);
+          currentLine = word;
+        }
+      }
+      
+      lines.push(currentLine);
+      return lines;
+    }
     // Código para la portada (sin cambios)...
-    
+    const COVER_IMAGE_PATH = path.join(__dirname, 'postada-cp-catalago.jpg');
+    try {
+      // Añadir página de portada
+      const coverPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+      if (fs.existsSync(COVER_IMAGE_PATH)) {
+        const coverImageBytes = fs.readFileSync(COVER_IMAGE_PATH);
+        let coverImage;
+
+        // Determinar tipo de imagen y cargarla
+        if (COVER_IMAGE_PATH.toLowerCase().endsWith('.jpg') || COVER_IMAGE_PATH.toLowerCase().endsWith('.jpeg')) {
+          coverImage = await pdfDoc.embedJpg(coverImageBytes);
+        } else if (COVER_IMAGE_PATH.toLowerCase().endsWith('.png')) {
+          coverImage = await pdfDoc.embedPng(coverImageBytes);
+        }
+
+        if (coverImage) {
+          coverPage.drawImage(coverImage, {
+            x: 0,
+            y: 0,
+            width: PAGE_WIDTH,
+            height: PAGE_HEIGHT,
+          });
+        }
+      } else {
+        console.log(`Archivo de portada no encontrado: ${COVER_IMAGE_PATH}. Continuando sin portada.`);
+        // Agregar un título en la portada como alternativa
+        coverPage.drawText("Catálogo de Productos", {
+          x: 150,
+          y: PAGE_HEIGHT / 2,
+          size: 24,
+          font: helveticaBold
+        });
+      }
+    } catch (error) {
+      console.error("Error al cargar la imagen de portada:", error);
+      // Continuar sin la portada en caso de error
+    }
     // Calcular número de páginas necesarias
     const totalPages = Math.ceil(products.length / PRODUCTS_PER_PAGE);
     console.log(`Generando PDF con ${totalPages} páginas...`);
