@@ -128,6 +128,17 @@ async function generatePDF(products) {
     // Fuentes
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    // Función para normalizar texto y eliminar caracteres especiales no soportados
+    function normalizeText(text) {
+      if (!text) return '';
+      
+      // Normalizar caracteres acentuados y especiales
+      return text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Eliminar diacríticos
+        .replace(/[^\x00-\x7F]/g, '') // Eliminar caracteres no ASCII
+        .replace(/[^\w\s.,;:!?()\/\-"']/g, ''); // Mantener solo caracteres básicos
+    }
     
     // Función auxiliar para dividir el texto en múltiples líneas
     function splitTextToLines(text, maxWidth, font, fontSize) {
