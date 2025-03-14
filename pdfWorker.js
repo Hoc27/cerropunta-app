@@ -312,13 +312,39 @@ async function generateSinglePage(products, pageIndex, outputPath) {
               productImage = await pdfDoc.embedPng(imageBytes);
             }
             
-            // Dibujar imagen
+            // Dibujar imagen manteniendo la relación de aspecto
             if (productImage) {
+              // Obtener las dimensiones originales de la imagen
+              const imgWidth = productImage.width;
+              const imgHeight = productImage.height;
+              
+              // Calcular la relación de aspecto
+              const aspectRatio = imgWidth / imgHeight;
+              
+              // Calcular las nuevas dimensiones para mantener la relación de aspecto
+              // mientras se ajusta al espacio máximo definido por IMAGE_SIZE
+              let newWidth, newHeight;
+              
+              if (aspectRatio > 1) {
+                // Imagen más ancha que alta
+                newWidth = IMAGE_SIZE;
+                newHeight = IMAGE_SIZE / aspectRatio;
+              } else {
+                // Imagen más alta que ancha o cuadrada
+                newHeight = IMAGE_SIZE;
+                newWidth = IMAGE_SIZE * aspectRatio;
+              }
+              
+              // Calcular las coordenadas para centrar la imagen en el espacio disponible
+              const centerX = x + (IMAGE_SIZE - newWidth) / 2;
+              const centerY = y - newHeight - (IMAGE_SIZE - newHeight) / 2;
+              
+              // Dibujar la imagen con las dimensiones calculadas
               page.drawImage(productImage, {
-                x: x,
-                y: y - IMAGE_SIZE,
-                width: IMAGE_SIZE,
-                height: IMAGE_SIZE,
+                x: centerX,
+                y: centerY,
+                width: newWidth,
+                height: newHeight,
               });
             }
             
