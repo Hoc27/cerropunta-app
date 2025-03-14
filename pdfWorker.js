@@ -80,23 +80,27 @@ async function downloadImage(imageUrl, productId) {
 }
 
 // Función para obtener todos los productos de Shopify
-async function getAllProducts() {
+async function getAllProducts(collectionId = '205283721384') {
   try {
-    console.log('Obteniendo productos de Shopify...');
-    
-    let params = { limit: 250 };
+    console.log(`Obteniendo productos de la colección ${collectionId}...`);
+   
+    let params = { 
+      collection_id: collectionId,
+      limit: 250 
+    };
     let products = [];
     let hasNextPage = true;
-    
+   
     // Actualizar estado
     generationStatus.progress = 10;
-    generationStatus.status = "Obteniendo productos de Shopify";
-    
-    // Paginar a través de todos los productos
+    generationStatus.status = `Obteniendo productos de la colección ${collectionId}`;
+   
+    // Paginar a través de los productos de la colección
     while (hasNextPage) {
+      // Utilizamos product.list con el parámetro collection_id
       const productBatch = await shopify.product.list(params);
       products = products.concat(productBatch);
-      
+     
       if (productBatch.length < 250) {
         hasNextPage = false;
       } else {
@@ -104,13 +108,13 @@ async function getAllProducts() {
         params.limit = 250;
       }
     }
-    
+   
     generationStatus.totalProducts = products.length;
-    console.log(`Se encontraron ${products.length} productos.`);
+    console.log(`Se encontraron ${products.length} productos en la colección.`);
     return products;
   } catch (error) {
-    console.error('Error al obtener productos:', error);
-    generationStatus.error = `Error al obtener productos: ${error.message}`;
+    console.error('Error al obtener productos de la colección:', error);
+    generationStatus.error = `Error al obtener productos de la colección: ${error.message}`;
     throw error;
   }
 }
