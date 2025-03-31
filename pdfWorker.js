@@ -80,7 +80,7 @@ async function downloadImage(imageUrl, productId) {
 }
 
 // Función para obtener todos los productos de Shopify
-async function getAllProducts(collectionId = '205283721384') {
+async function getAllProducts(collectionId = '452810866936') {
   try {
     console.log(`Obteniendo productos de la colección ${collectionId}...`);
    
